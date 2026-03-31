@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Escaneo · Ingreso de Mercadería</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1117; --surface: #181c27; --surface2: #1f2435;
+    --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.13);
+    --text: #e8eaf0; --muted: #6b7280; --accent: #4f8ef7;
+    --ok: #22c55e; --ok-bg: rgba(34,197,94,0.08); --ok-border: rgba(34,197,94,0.25);
+    --warn: #f59e0b; --warn-bg: rgba(245,158,11,0.08); --warn-border: rgba(245,158,11,0.25);
+    --error: #ef4444; --error-bg: rgba(239,68,68,0.08); --error-border: rgba(239,68,68,0.25);
+    --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans', sans-serif;
+  }
+  body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; padding: 24px; min-height: 100vh; }
+
+  .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .header-left { display: flex; align-items: center; gap: 10px; }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .logo-text { font-family: var(--mono); font-size: 13px; font-weight: 600; letter-spacing: .08em; }
+  .session-clock { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+  /* Pedido bar */
+  .pedido-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .pedido-label { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; white-space: nowrap; }
+  .pedido-input { background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; color: var(--text); font-family: var(--mono); font-size: 13px; padding: 8px 13px; outline: none; width: 200px; transition: border-color .15s; }
+  .pedido-input:focus { border-color: var(--accent); }
+  .btn-primary { background: var(--accent); color: #fff; border: none; border-radius: 6px; font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 9px 16px; cursor: pointer; transition: opacity .15s; white-space: nowrap; }
+  .btn-primary:hover { opacity: .85; }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-danger { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); border-radius: 6px; font-family: var(--mono); font-size: 11px; font-weight: 600; padding: 9px 16px; cursor: pointer; transition: opacity .15s; white-space: nowrap; }
+  .btn-danger:hover { opacity: .85; }
+  .btn-danger:disabled { opacity: .4; cursor: not-allowed; }
+  .pedido-badge { font-family: var(--mono); font-size: 11px; padding: 4px 10px; border-radius: 20px; background: rgba(79,142,247,.1); border: 1px solid rgba(79,142,247,.3); color: var(--accent); white-space: nowrap; }
+  .progress-bar-wrap { flex: 1; min-width: 120px; height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: var(--accent); border-radius: 2px; transition: width .4s ease; width: 0%; }
+  .api-status { font-family: var(--mono); font-size: 10px; padding: 3px 9px; border-radius: 4px; border: 1px solid; white-space: nowrap; }
+  .api-status.loading { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.3); color: var(--warn); }
+  .api-status.ok    { background: var(--ok-bg);    border-color: var(--ok-border);    color: var(--ok); }
+  .api-status.error { background: var(--error-bg); border-color: var(--error-border); color: var(--error); }
+
+  /* Cerrar pedido banner */
+  .cerrar-banner { display: none; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; align-items: center; justify-content: space-between; gap: 14px; }
+  .cerrar-banner.visible { display: flex; }
+  .cerrar-banner.ok-state   { background: var(--ok-bg);   border: 1px solid var(--ok-border); }
+  .cerrar-banner.warn-state { background: var(--warn-bg); border: 1px solid var(--warn-border); }
+  .cerrar-banner-text { font-family: var(--mono); font-size: 12px; }
+  .cerrar-banner.ok-state   .cerrar-banner-text { color: var(--ok); }
+  .cerrar-banner.warn-state .cerrar-banner-text { color: var(--warn); }
+
+  /* Grid principal */
+  .main-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 16px; }
+
+  .scan-panel, .result-panel, .resumen-panel, .history-panel, .reset-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px;
+  }
+  .result-panel { display: flex; flex-direction: column; }
+  .panel-title { font-family: var(--mono); font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+
+  .field-label { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 5px; }
+  .field-input { width: 100%; background: var(--surface2); border: 1px solid var(--border2); border-radius: 6px; color: var(--text); font-family: var(--mono); font-size: 15px; padding: 12px 14px; outline: none; transition: border-color .15s, box-shadow .15s; margin-bottom: 10px; }
+  .field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,142,247,.1); }
+  .field-input.flash-ok    { border-color: var(--ok)   !important; box-shadow: 0 0 0 3px rgba(34,197,94,.15)  !important; }
+  .field-input.flash-warn  { border-color: var(--warn) !important; box-shadow: 0 0 0 3px rgba(245,158,11,.15) !important; }
+  .field-input.flash-error { border-color: var(--error)!important; box-shadow: 0 0 0 3px rgba(239,68,68,.15)  !important; }
+  .hint { font-family: var(--mono); font-size: 11px; color: var(--muted); background: var(--surface2); border: 1px dashed var(--border2); border-radius: 6px; padding: 9px 12px; text-align: center; margin-bottom: 10px; }
+  .hint span { color: var(--accent); }
+  .btn-full { width: 100%; border: none; border-radius: 6px; font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: .05em; padding: 11px; cursor: pointer; transition: opacity .15s, transform .1s; }
+  .btn-full:hover { opacity: .88; }
+  .btn-full:active { transform: scale(.98); }
+  .btn-full:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-full.accent { background: var(--accent); color: #fff; }
+  .btn-full.warn   { background: var(--error-bg); color: var(--error); border: 1px solid var(--error-border); }
+  .saving-indicator { font-family: var(--mono); font-size: 10px; color: var(--muted); margin-top: 8px; text-align: center; min-height: 16px; }
+  .saving-indicator.saving { color: var(--warn); }
+  .saving-indicator.saved  { color: var(--ok); }
+  .saving-indicator.error  { color: var(--error); }
+
+  /* Reset panel */
+  .reset-panel { margin-bottom: 16px; }
+  .reset-row { display: flex; gap: 10px; align-items: flex-end; }
+  .reset-row .field-input { margin-bottom: 0; font-size: 13px; padding: 10px 12px; }
+  .reset-msg { font-family: var(--mono); font-size: 11px; margin-top: 8px; min-height: 16px; }
+  .reset-msg.ok    { color: var(--ok); }
+  .reset-msg.error { color: var(--error); }
+
+  /* Resultado */
+  .result-display { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 140px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); transition: all .25s ease; margin-bottom: 12px; padding: 18px; }
+  .result-display.ok    { background: var(--ok-bg);    border-color: var(--ok-border); }
+  .result-display.warn  { background: var(--warn-bg);  border-color: var(--warn-border); }
+  .result-display.error { background: var(--error-bg); border-color: var(--error-border); }
+  .result-icon   { font-size: 30px; margin-bottom: 8px; line-height: 1; }
+  .result-status { font-family: var(--mono); font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+  .result-status.ok    { color: var(--ok); }
+  .result-status.warn  { color: var(--warn); }
+  .result-status.error { color: var(--error); }
+  .result-product { font-family: var(--sans); font-size: 12px; color: var(--muted); text-align: center; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  .meta-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; }
+  .meta-key { font-family: var(--mono); font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-bottom: 3px; }
+  .meta-val { font-family: var(--mono); font-size: 13px; color: var(--text); font-weight: 500; }
+  .meta-val.ok   { color: var(--ok); }
+  .meta-val.warn { color: var(--warn); }
+
+  /* Resumen */
+  .resumen-panel { margin-bottom: 14px; }
+  .resumen-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .stats-row { display: flex; gap: 8px; }
+  .stat-pill { font-family: var(--mono); font-size: 11px; padding: 3px 10px; border-radius: 20px; border: 1px solid; }
+  .stat-pill.ok      { background: var(--ok-bg);    border-color: var(--ok-border);    color: var(--ok); }
+  .stat-pill.warn    { background: var(--warn-bg);  border-color: var(--warn-border);  color: var(--warn); }
+  .stat-pill.pending { background: rgba(107,114,128,.1); border-color: rgba(107,114,128,.3); color: var(--muted); }
+  .resumen-table { width: 100%; border-collapse: collapse; }
+  .resumen-table th { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .resumen-table td { font-family: var(--mono); font-size: 12px; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .resumen-table tr:last-child td { border-bottom: none; }
+  .resumen-table tr { transition: background .1s; }
+  .resumen-table tr:hover td { background: var(--surface2); }
+  .resumen-table tr.highlight td { animation: rowPulse .5s ease; }
+  @keyframes rowPulse { 0%{background:rgba(79,142,247,.15)} 100%{background:transparent} }
+
+  .badge { display: inline-block; font-family: var(--mono); font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px; border: 1px solid; white-space: nowrap; }
+  .badge.ok      { background: var(--ok-bg);    border-color: var(--ok-border);    color: var(--ok); }
+  .badge.warn    { background: var(--warn-bg);  border-color: var(--warn-border);  color: var(--warn); }
+  .badge.error   { background: var(--error-bg); border-color: var(--error-border); color: var(--error); }
+  .badge.pending { background: rgba(107,114,128,.1); border-color: rgba(107,114,128,.3); color: var(--muted); }
+  .titulo-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--muted); }
+  .num-ok   { color: var(--ok); }
+  .num-warn { color: var(--warn); }
+
+  /* Historial */
+  .history-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .btn-clear { background: transparent; border: 1px solid var(--border2); border-radius: 5px; color: var(--muted); font-family: var(--mono); font-size: 10px; padding: 4px 10px; cursor: pointer; transition: all .15s; }
+  .btn-clear:hover { border-color: var(--error); color: var(--error); }
+  .hist-table { width: 100%; border-collapse: collapse; }
+  .hist-table th { font-family: var(--mono); font-size: 9px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); text-align: left; padding: 5px 10px; border-bottom: 1px solid var(--border); }
+  .hist-table td { font-family: var(--mono); font-size: 11px; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+  .hist-table tr:last-child td { border-bottom: none; }
+  .hist-table tr.new-row td { animation: rowIn .3s ease; }
+  @keyframes rowIn { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:translateY(0)} }
+  .empty-state { text-align: center; padding: 30px; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .time-muted { color: var(--muted); font-size: 10px; }
+
+  /* Modal cierre */
+  .modal-overlay { display: none; position: fixed; top:0; left:0; right:0; bottom:0; background: rgba(0,0,0,.6); z-index: 100; align-items: center; justify-content: center; }
+  .modal-overlay.visible { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 12px; padding: 28px; max-width: 420px; width: 100%; }
+  .modal-title { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px; }
+  .modal-sub { font-family: var(--sans); font-size: 13px; color: var(--muted); margin-bottom: 20px; }
+  .modal-btns { display: flex; gap: 10px; }
+  .modal-btns button { flex: 1; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo-dot"></div>
+    <span class="logo-text">ESCANEO · INGRESO DE MERCADERÍA</span>
+  </div>
+  <span class="session-clock" id="clock">—</span>
+</div>
+
+<!-- Pedido bar -->
+<div class="pedido-bar">
+  <span class="pedido-label">Pedido</span>
+  <input class="pedido-input" id="pedido-input" type="text" placeholder="Ej: GL-EP0042">
+  <button class="btn-primary" id="btn-cargar" onclick="cargarPedido()">Cargar pedido</button>
+  <span class="api-status loading" id="api-status">Ingresá un pedido</span>
+  <span class="pedido-badge" id="pedido-badge">0 / 0 ítems</span>
+  <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progress-fill"></div></div>
+</div>
+
+<!-- Banner cerrar pedido (visible cuando hay diferencias y todos escaneados) -->
+<div class="cerrar-banner" id="cerrar-banner">
+  <span class="cerrar-banner-text" id="cerrar-banner-text"></span>
+  <button class="btn-primary" id="cerrar-banner-btn" onclick="confirmarCierre()">Cerrar pedido</button>
+</div>
+
+<!-- Grid escaneo + resultado -->
+<div class="main-grid">
+  <div class="scan-panel">
+    <div class="panel-title">Escaneo</div>
+    <div class="field-label">Código de barras / Inventory ID</div>
+    <input class="field-input" id="scan-input" type="text" placeholder="Cargá un pedido primero..." autocomplete="off" disabled>
+    <div class="hint">El lector llena este campo · <span>Enter</span> para registrar</div>
+    <button class="btn-full accent" id="btn-reg" onclick="registrar()" disabled>REGISTRAR SCAN</button>
+    <div class="saving-indicator" id="saving-indicator"></div>
+  </div>
+
+  <div class="result-panel">
+    <div class="panel-title">Último resultado</div>
+    <div class="result-display" id="result-display">
+      <div class="result-icon">⬜</div>
+      <div class="result-status" style="color:var(--muted)">Esperando scan</div>
+      <div class="result-product">Cargá un pedido para comenzar</div>
+    </div>
+    <div class="meta-grid">
+      <div class="meta-item"><div class="meta-key">Escaneado</div><div class="meta-val" id="m-esc">—</div></div>
+      <div class="meta-item"><div class="meta-key">Esperado</div> <div class="meta-val" id="m-esp">—</div></div>
+      <div class="meta-item"><div class="meta-key">Diferencia</div><div class="meta-val" id="m-dif">—</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Reset ítem -->
+<div class="reset-panel">
+  <div class="panel-title">Resetear ítem</div>
+  <div class="reset-row">
+    <div style="flex:1">
+      <div class="field-label">Inventory ID a resetear</div>
+      <input class="field-input" id="reset-input" type="text" placeholder="Ingresá el código a borrar..." autocomplete="off">
+    </div>
+    <button class="btn-primary" onclick="resetearItem()" style="margin-bottom:0;padding:10px 18px">Borrar scans</button>
+  </div>
+  <div class="reset-msg" id="reset-msg"></div>
+</div>
+
+<!-- Resumen pedido -->
+<div class="resumen-panel">
+  <div class="resumen-header">
+    <span class="panel-title" style="margin-bottom:0">Resumen del pedido</span>
+    <div class="stats-row">
+      <span class="stat-pill ok"      id="s-ok">✓ 0 OK</span>
+      <span class="stat-pill warn"    id="s-warn">△ 0 dif.</span>
+      <span class="stat-pill pending" id="s-pend">○ 0 pend.</span>
+    </div>
+  </div>
+  <table class="resumen-table">
+    <thead>
+      <tr>
+        <th>Inventory ID</th><th>SKU</th><th>Producto</th>
+        <th style="text-align:center">Esperado</th>
+        <th style="text-align:center">Escaneado</th>
+        <th style="text-align:center">Diferencia</th>
+        <th>Estado</th>
+      </tr>
+    </thead>
+    <tbody id="resumen-body">
+      <tr><td colspan="7" class="empty-state">Cargá un pedido para ver el resumen</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Historial sesión -->
+<div class="history-panel">
+  <div class="history-header">
+    <span class="panel-title" style="margin-bottom:0">Historial de scans</span>
+    <button class="btn-clear" onclick="limpiarHistorial()">Limpiar sesión</button>
+  </div>
+  <table class="hist-table" id="hist-table" style="display:none">
+    <thead><tr><th>Hora</th><th>Inventory ID</th><th>Producto</th><th>Acción</th><th>Estado</th></tr></thead>
+    <tbody id="hist-body"></tbody>
+  </table>
+  <div class="empty-state" id="hist-empty">No hay scans registrados en esta sesión</div>
+</div>
+
+<!-- Modal confirmación cierre -->
+<div class="modal-overlay" id="modal-cierre">
+  <div class="modal">
+    <div class="modal-title">Cerrar pedido</div>
+    <div class="modal-sub" id="modal-sub">Hay diferencias en el pedido. Al cerrar se registrará el estado actual en el historial y en el archivo de Ingresos.</div>
+    <div class="modal-btns">
+      <button class="btn-full" style="background:var(--surface2);color:var(--muted);border:1px solid var(--border2)" onclick="cerrarModal()">Cancelar</button>
+      <button class="btn-full accent" onclick="ejecutarCierre()">Confirmar cierre</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbxg3tqLlsssoO4fnslnuChvxkZB-G3TbAABlLU57bEIxeGY7C-s6W5GKzqVFHcbYkUD/exec';
+
+let datosPedido  = {};
+let scanCount    = {};
+let pedidoActivo = '';
+
+// ── Reloj ─────────────────────────────────────────────────
+function tick() {
+  document.getElementById('clock').textContent =
+    'Sesión · ' + new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+setInterval(tick, 1000); tick();
+
+// ── Cargar pedido ─────────────────────────────────────────
+async function cargarPedido() {
+  const pedido = document.getElementById('pedido-input').value.trim();
+  if (!pedido) return;
+  pedidoActivo = pedido;
+  setApiStatus('loading', 'Cargando...');
+  document.getElementById('btn-cargar').disabled = true;
+
+  try {
+    const res  = await fetch(API_URL + '?pedido=' + encodeURIComponent(pedido));
+    const data = await res.json();
+
+    if (data.error || !data.items) {
+      setApiStatus('error', data.error || 'Sin datos');
+      document.getElementById('btn-cargar').disabled = false;
+      return;
+    }
+
+    datosPedido = {};
+    scanCount   = {};
+    data.items.forEach(item => {
+      if (item.inventory_id) {
+        datosPedido[item.inventory_id] = { sku: item.sku, titulo: item.titulo, esperado: item.esperado };
+      }
+    });
+
+    const total = Object.keys(datosPedido).length;
+    setApiStatus('ok', total + ' ítems cargados');
+    document.getElementById('btn-cargar').disabled = false;
+    document.getElementById('cerrar-banner').classList.remove('visible');
+
+    const si = document.getElementById('scan-input');
+    si.disabled = false;
+    si.placeholder = 'Apuntá el lector acá y escaneá...';
+    document.getElementById('btn-reg').disabled = false;
+    si.focus();
+    renderResumen();
+
+  } catch (err) {
+    setApiStatus('error', 'Error de conexión');
+    document.getElementById('btn-cargar').disabled = false;
+  }
+}
+
+// ── Teclado ───────────────────────────────────────────────
+document.getElementById('scan-input').addEventListener('keydown',   e => { if (e.key === 'Enter') registrar(); });
+document.getElementById('pedido-input').addEventListener('keydown', e => { if (e.key === 'Enter') cargarPedido(); });
+document.getElementById('reset-input').addEventListener('keydown',  e => { if (e.key === 'Enter') resetearItem(); });
+
+// ── Registrar scan ────────────────────────────────────────
+async function registrar() {
+  const codigo = document.getElementById('scan-input').value.trim();
+  if (!codigo) { flashInput('scan-input', 'error'); return; }
+
+  scanCount[codigo] = (scanCount[codigo] || 0) + 1;
+  const cantEsc = scanCount[codigo];
+  const item    = datosPedido[codigo];
+  const hora    = new Date().toLocaleTimeString('es-AR', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+
+  let cls, statusText, detalle;
+
+  if (!item) {
+    cls = 'error'; statusText = 'NO ENCONTRADO';
+    detalle = 'Código no está en el pedido ' + pedidoActivo;
+    mostrarResultado(cls, statusText, detalle, codigo, cantEsc, '—', '—');
+  } else {
+    const esp = item.esperado;
+    const dif = cantEsc - esp;
+    detalle   = item.titulo;
+    if      (dif === 0) { cls = 'ok';   statusText = 'OK · CANTIDAD EXACTA'; }
+    else if (dif  <  0) { cls = 'warn'; statusText = 'FALTAN ' + Math.abs(dif) + ' UNIDADES'; }
+    else                { cls = 'warn'; statusText = 'EXCESO DE ' + dif + ' UNIDADES'; }
+    const difStr = dif === 0 ? '0' : (dif > 0 ? '+'+dif : ''+dif);
+    mostrarResultado(cls, statusText, detalle, codigo, cantEsc, esp, difStr);
+    renderResumen();
+    const row = document.getElementById('row-' + codigo);
+    if (row) { row.classList.remove('highlight'); void row.offsetWidth; row.classList.add('highlight'); }
+  }
+
+  agregarHistorial({ hora, codigo, titulo: item ? item.titulo : '—', clase: cls, status: statusText, accion: 'Scan #' + cantEsc });
+  guardarEnSheet(codigo, pedidoActivo);
+  flashInput('scan-input', cls);
+  document.getElementById('scan-input').value = '';
+  document.getElementById('scan-input').focus();
+
+  verificarCierrePedido();
+}
+
+// ── Verificar estado del pedido y mostrar banner ──────────
+function verificarCierrePedido() {
+  const ids = Object.keys(datosPedido);
+  if (ids.length === 0) return;
+
+  const banner    = document.getElementById('cerrar-banner');
+  const bannerTx  = document.getElementById('cerrar-banner-text');
+  const bannerBtn = document.getElementById('cerrar-banner-btn');
+
+  const todosEscaneados = ids.every(id => (scanCount[id] || 0) > 0);
+  const hayDiferencias  = ids.some(id => (scanCount[id] || 0) !== datosPedido[id].esperado);
+
+  // Siempre mostrar el banner desde el primer scan
+  banner.classList.add('visible');
+
+  if (todosEscaneados && !hayDiferencias) {
+    // Todo OK — banner verde
+    banner.className = 'cerrar-banner visible ok-state';
+    bannerTx.textContent = '✓ Todos los ítems coinciden. Cerrá el pedido cuando estés listo.';
+    bannerBtn.style.background = 'var(--ok)';
+    bannerBtn.style.color = '#fff';
+    bannerBtn.style.border = 'none';
+  } else if (!todosEscaneados) {
+    // Faltan ítems — banner amarillo
+    const faltantes = ids.filter(id => (scanCount[id] || 0) === 0).length;
+    banner.className = 'cerrar-banner visible warn-state';
+    bannerTx.textContent = '⚠ Faltan ' + faltantes + ' ítem(s) sin escanear. Podés cerrar igual con 0 en esos.';
+    bannerBtn.style.background = 'var(--warn)';
+    bannerBtn.style.color = '#fff';
+    bannerBtn.style.border = 'none';
+  } else {
+    // Hay diferencias — banner amarillo
+    banner.className = 'cerrar-banner visible warn-state';
+    bannerTx.textContent = '⚠ Hay diferencias. Podés resetear ítems o cerrar el pedido igual.';
+    bannerBtn.style.background = 'var(--warn)';
+    bannerBtn.style.color = '#fff';
+    bannerBtn.style.border = 'none';
+  }
+}
+
+// ── Resetear ítem ─────────────────────────────────────────
+async function resetearItem() {
+  const codigo = document.getElementById('reset-input').value.trim();
+  const msg    = document.getElementById('reset-msg');
+
+  if (!codigo) { msg.textContent = '⚠ Ingresá un inventory_id'; msg.className = 'reset-msg error'; return; }
+  if (!datosPedido[codigo] && !scanCount[codigo]) {
+    msg.textContent = '⚠ Ese código no tiene scans registrados'; msg.className = 'reset-msg error'; return;
+  }
+
+  msg.textContent = 'Borrando...'; msg.className = 'reset-msg';
+
+  try {
+    await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ accion: 'resetear', inventory_id: codigo }),
+      mode: 'no-cors'
+    });
+
+    delete scanCount[codigo];
+    document.getElementById('reset-input').value = '';
+    document.getElementById('cerrar-banner').classList.remove('visible');
+    renderResumen();
+    msg.textContent = '✓ Scans de ' + codigo + ' eliminados. Podés volver a escanear.';
+    msg.className = 'reset-msg ok';
+    setTimeout(() => { msg.textContent = ''; msg.className = 'reset-msg'; }, 4000);
+    document.getElementById('scan-input').focus();
+
+  } catch (err) {
+    msg.textContent = '⚠ Error al borrar'; msg.className = 'reset-msg error';
+  }
+}
+
+// ── Cierre pedido ─────────────────────────────────────────
+function confirmarCierre() {
+  document.getElementById('modal-cierre').classList.add('visible');
+}
+function cerrarModal() {
+  document.getElementById('modal-cierre').classList.remove('visible');
+}
+
+async function ejecutarCierre() {
+  cerrarModal();
+
+  const ids = Object.keys(datosPedido);
+  // Incluir todos los ítems, incluso los no escaneados (escaneado = 0)
+  const items = ids.map(id => ({
+    inventory_id: id,
+    sku:          datosPedido[id].sku,
+    titulo:       datosPedido[id].titulo,
+    esperado:     datosPedido[id].esperado,
+    escaneado:    scanCount[id] || 0,
+    diferencia:   (scanCount[id] || 0) - datosPedido[id].esperado
+  }));
+
+  const hayDif = items.some(i => i.diferencia !== 0);
+  const estado = hayDif ? 'Con diferencias' : 'Ingresado';
+
+  setApiStatus('loading', 'Cerrando pedido...');
+
+  try {
+    await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ accion: 'cerrar', pedido: pedidoActivo, items, estado }),
+      mode: 'no-cors'
+    });
+
+    setApiStatus('ok', '✓ Pedido cerrado · ' + estado);
+    document.getElementById('cerrar-banner').classList.remove('visible');
+
+    // Deshabilitar escaneo
+    document.getElementById('scan-input').disabled = true;
+    document.getElementById('scan-input').placeholder = 'Pedido cerrado. Cargá uno nuevo.';
+    document.getElementById('btn-reg').disabled = true;
+
+  } catch (err) {
+    setApiStatus('error', 'Error al cerrar pedido');
+  }
+}
+
+// ── Guardar scan en Sheet ─────────────────────────────────
+async function guardarEnSheet(inventory_id, pedido) {
+  const ind = document.getElementById('saving-indicator');
+  ind.textContent = '↑ Guardando...'; ind.className = 'saving-indicator saving';
+  try {
+    await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({ accion: 'scan', inventory_id, pedido, timestamp: new Date().toISOString() }),
+      mode: 'no-cors'
+    });
+    ind.textContent = '✓ Guardado'; ind.className = 'saving-indicator saved';
+  } catch (err) {
+    ind.textContent = '⚠ No se pudo guardar'; ind.className = 'saving-indicator error';
+  }
+  setTimeout(() => { ind.textContent = ''; ind.className = 'saving-indicator'; }, 2500);
+}
+
+// ── Render resumen ────────────────────────────────────────
+function renderResumen() {
+  const tbody = document.getElementById('resumen-body');
+  tbody.innerHTML = '';
+  let ok = 0, warn = 0, pend = 0;
+
+  Object.entries(datosPedido).forEach(([invId, item]) => {
+    const esc = scanCount[invId] || 0;
+    const esp = item.esperado;
+    let estado = 'pending', estadoLabel = 'Pendiente', dif = '—', difClass = '';
+
+    if (esc > 0) {
+      const d = esc - esp;
+      dif      = d === 0 ? '0' : (d > 0 ? '+'+d : ''+d);
+      difClass = d === 0 ? 'num-ok' : 'num-warn';
+      estado   = d === 0 ? 'ok' : 'warn';
+      estadoLabel = d === 0 ? 'OK' : 'DIFERENCIA';
+      d === 0 ? ok++ : warn++;
+    } else { pend++; }
+
+    const t = item.titulo.length > 42 ? item.titulo.slice(0,42)+'…' : item.titulo;
+    const tr = document.createElement('tr');
+    tr.id = 'row-' + invId;
+    tr.innerHTML = `
+      <td style="font-weight:500">${invId}</td>
+      <td style="color:var(--muted);font-size:10px">${item.sku}</td>
+      <td class="titulo-cell" title="${item.titulo}">${t}</td>
+      <td style="text-align:center">${esp}</td>
+      <td style="text-align:center;font-weight:500">${esc || '—'}</td>
+      <td style="text-align:center" class="${difClass}">${dif}</td>
+      <td><span class="badge ${estado}">${estadoLabel}</span></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('s-ok').textContent   = '✓ ' + ok   + ' OK';
+  document.getElementById('s-warn').textContent  = '△ ' + warn + ' dif.';
+  document.getElementById('s-pend').textContent  = '○ ' + pend + ' pend.';
+  const total = Object.keys(datosPedido).length;
+  const esc   = Object.keys(datosPedido).filter(c => (scanCount[c]||0) > 0).length;
+  document.getElementById('pedido-badge').textContent  = esc + ' / ' + total + ' ítems';
+  document.getElementById('progress-fill').style.width = total > 0 ? (esc/total*100)+'%' : '0%';
+}
+
+// ── Helpers ───────────────────────────────────────────────
+function mostrarResultado(cls, status, detalle, codigo, esc, esp, dif) {
+  const icons = { ok:'✅', warn:'⚠️', error:'❌' };
+  const d = document.getElementById('result-display');
+  d.className = 'result-display ' + cls;
+  d.innerHTML = `
+    <div class="result-icon">${icons[cls]}</div>
+    <div class="result-status ${cls}">${status}</div>
+    <div class="result-product" title="${detalle}">${detalle}</div>
+  `;
+  document.getElementById('m-esc').textContent = esc;
+  document.getElementById('m-esp').textContent = esp;
+  const dEl = document.getElementById('m-dif');
+  dEl.textContent = dif;
+  dEl.className = 'meta-val ' + (dif === '0' ? 'ok' : dif === '—' ? '' : 'warn');
+}
+
+function agregarHistorial({ hora, codigo, titulo, clase, status, accion }) {
+  document.getElementById('hist-empty').style.display = 'none';
+  document.getElementById('hist-table').style.display = 'table';
+  const tbody = document.getElementById('hist-body');
+  const tr = document.createElement('tr');
+  tr.className = 'new-row';
+  const t = titulo.length > 34 ? titulo.slice(0,34)+'…' : titulo;
+  const bc = { 'OK · CANTIDAD EXACTA':'ok', 'NO ENCONTRADO':'error' }[status] || 'warn';
+  tr.innerHTML = `
+    <td class="time-muted">${hora}</td>
+    <td style="font-weight:500">${codigo}</td>
+    <td style="color:var(--muted);font-size:11px">${t}</td>
+    <td style="color:var(--muted)">${accion}</td>
+    <td><span class="badge ${bc}">${status}</span></td>
+  `;
+  tbody.insertBefore(tr, tbody.firstChild);
+}
+
+function flashInput(id, cls) {
+  const el = document.getElementById(id);
+  el.classList.remove('flash-ok','flash-warn','flash-error');
+  el.classList.add('flash-' + cls);
+  setTimeout(() => el.classList.remove('flash-ok','flash-warn','flash-error'), 700);
+}
+
+function setApiStatus(tipo, msg) {
+  const el = document.getElementById('api-status');
+  el.textContent = msg; el.className = 'api-status ' + tipo;
+}
+
+function limpiarHistorial() {
+  document.getElementById('hist-body').innerHTML = '';
+  document.getElementById('hist-table').style.display = 'none';
+  document.getElementById('hist-empty').style.display = 'block';
+  for (const k in scanCount) delete scanCount[k];
+  renderResumen();
+}
+</script>
+</body>
+</html>
